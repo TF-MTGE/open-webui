@@ -290,8 +290,8 @@ export const toggleModelById = async (token: string, id: string) => {
 export const updateModelById = async (token: string, id: string, model: object) => {
 	let error = null;
 
-	const { base_model_id, name, meta, params, access_grants, is_active } = model as any;
-	const payload = { id, base_model_id, name, meta, params, access_grants, is_active };
+	const { base_model_id, name, meta, params, access_grants, is_active, commit_message } = model as any;
+	const payload = { id, base_model_id, name, meta, params, access_grants, is_active, commit_message };
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/models/model/update`, {
 		method: 'POST',

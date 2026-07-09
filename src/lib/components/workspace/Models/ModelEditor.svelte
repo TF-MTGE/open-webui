@@ -112,6 +112,7 @@
 	let terminalId = '';
 	let tts = { voice: '' };
 	export let suggestionTags: { name: string }[] = [];
+	let commitMessage = '';
 	let voices: { id: string; name?: string }[] = [];
 
 	const getBaseModelItems = (models: any[] = []) => {
@@ -279,6 +280,7 @@
 		}
 
 		info.params.system = system.trim() === '' ? null : system;
+		info.commit_message = commitMessage.trim() || null;
 		info.params.stop = params.stop
 			? (typeof params.stop === 'string' ? params.stop.split(',') : params.stop).filter((s) =>
 					s.trim()
@@ -915,6 +917,19 @@
 					</div>
 
 					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-4" />
+
+					{#if edit}
+						<div class="my-2">
+							<div class="text-xs font-medium mb-1 text-gray-500">
+								{$i18n.t('Commit Message')}
+							</div>
+							<input
+								class="w-full bg-transparent outline-hidden text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5"
+								placeholder={$i18n.t('Describe what changed in this version')}
+								bind:value={commitMessage}
+							/>
+						</div>
+					{/if}
 
 					<div class="my-2 flex justify-end">
 						<button

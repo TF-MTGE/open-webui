@@ -34,9 +34,9 @@
 	const handleRestore = async (entry: any) => {
 		restoring = true;
 		try {
-			await restoreModelSystemPromptVersion(localStorage.token, modelId, entry.id);
-			toast.success($i18n.t('System prompt version restored'));
-			versionId = entry.id;
+			const updated = await restoreModelSystemPromptVersion(localStorage.token, modelId, entry.id);
+			toast.success($i18n.t('System prompt version restored — already live, no need to save'));
+			versionId = entry.system_prompt_version_id ?? entry.id;
 			onRestore(entry.system_prompt);
 		} catch (e) {
 			toast.error(`${e}`);
@@ -97,7 +97,19 @@
 							{/if}
 						</div>
 						<div class="text-gray-400 truncate">{entry.commit_message || $i18n.t('Update')}</div>
-						<div class="text-gray-400">{renderDate(entry.created_at)}</div>
+						<div class="flex items-center gap-1 text-gray-400">
+							{#if entry.user}
+								<img
+									src={`/api/v1/users/${entry.user.id}/profile/image`}
+									alt={entry.user.name}
+									class="size-3 rounded-full"
+									on:error={(e) => (e.target.src = '/user.png')}
+								/>
+								<span class="truncate max-w-20">{entry.user.name}</span>
+								<span>•</span>
+							{/if}
+							<span class="shrink-0">{renderDate(entry.created_at)}</span>
+						</div>
 					</button>
 					{#if entry.id !== versionId}
 						<button

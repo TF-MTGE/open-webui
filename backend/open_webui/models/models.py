@@ -143,6 +143,7 @@ class ModelForm(BaseModel):
     params: ModelParams
     access_grants: list[dict | None] = None
     is_active: bool = True
+    commit_message: str | None = None
 
 
 class ModelsTable:
@@ -168,7 +169,7 @@ class ModelsTable:
             async with get_async_db_context(db) as db:
                 result = Model(
                     **{
-                        **form_data.model_dump(exclude={'access_grants'}),
+                        **form_data.model_dump(exclude={'access_grants', 'commit_message'}),
                         'user_id': user_id,
                         'created_at': int(time.time()),
                         'updated_at': int(time.time()),
@@ -516,7 +517,7 @@ class ModelsTable:
                 new_system = (model.params.model_dump() if isinstance(model.params, ModelParams) else model.params).get('system') or ''
                 old_system = (existing.params or {}).get('system') or ''
 
-                data = model.model_dump(exclude={'access_grants'})
+                data = model.model_dump(exclude={'access_grants', 'commit_message'})
                 data.pop('id', None)
                 data['updated_at'] = int(time.time())
                 for key, val in data.items():
@@ -530,6 +531,7 @@ class ModelsTable:
                         system_prompt=new_system,
                         user_id=existing.user_id,
                         parent_id=parent_id,
+                        commit_message=model.commit_message,
                         db=db,
                     )
                     if entry:
@@ -644,11 +646,11 @@ class ModelsTable:
             log.exception(f'Error syncing models for user {user_id}: {e}')
             return []
 
-
-async def update_model_system_prompt_version(
+    async def update_model_system_prompt_version(
         self,
         model_id: str,
         version_id: str,
+        user_id: str | None = None,
         db: AsyncSession | None = None,
     ) -> ModelModel | None:
         try:
@@ -662,11 +664,23 @@ async def update_model_system_prompt_version(
                 if not entry or entry.model_id != model_id:
                     return None
 
+                latest = await ModelSystemPromptHistories.get_latest_history_entry(model_id, db=db)
+                parent_id = latest.id if latest else None
+
                 params = dict(model.params) if model.params else {}
                 params['system'] = entry.system_prompt
                 model.params = params
                 model.system_prompt_version_id = version_id
                 model.updated_at = int(time.time())
+
+                await ModelSystemPromptHistories.create_history_entry(
+                    model_id=model_id,
+                    system_prompt=entry.system_prompt,
+                    user_id=user_id or model.user_id,
+                    parent_id=parent_id,
+                    commit_message=f'Restored from version {version_id[:8]}',
+                    db=db,
+                )
                 await db.commit()
 
                 return await self._to_model_model(model, db=db)

@@ -962,7 +962,7 @@ async def restore_model_system_prompt_version(
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
 
-    updated = await Models.update_model_system_prompt_version(model_id, history_id, db=db)
+    updated = await Models.update_model_system_prompt_version(model_id, history_id, user_id=user.id, db=db)
     if updated:
         await publish_event(request, EVENTS.MODEL_UPDATED, actor=user, subject_id=model_id)
         return updated
