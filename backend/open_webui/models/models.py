@@ -8,6 +8,7 @@ from typing import Optional
 from open_webui.internal.db import Base, JSONField, get_async_db_context
 from open_webui.models.access_grants import AccessGrantModel, AccessGrants
 from open_webui.models.groups import Groups
+from open_webui.models.model_system_prompt_history import ModelSystemPromptHistories
 from open_webui.models.users import User, UserModel, UserResponse, Users
 from open_webui.utils.validate import validate_profile_image_url
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -84,6 +85,7 @@ class Model(Base):
     params = Column(JSONField)  # see ModelParams
     meta = Column(JSONField)  # see ModelMeta
     is_active = Column(Boolean, default=True)  # soft-disable toggle
+    system_prompt_version_id = Column(Text, nullable=True)  # Points to active model_system_prompt_history entry
     updated_at = Column(BigInteger)  # epoch seconds
     created_at = Column(BigInteger)  # epoch seconds
 
@@ -99,6 +101,7 @@ class ModelModel(BaseModel):
 
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
 
+    system_prompt_version_id: str | None = None
     is_active: bool
     updated_at: int  # timestamp in epoch
     created_at: int  # timestamp in epoch
@@ -177,6 +180,19 @@ class ModelsTable:
                 await AccessGrants.set_access_grants('model', result.id, form_data.access_grants, db=db)
 
                 if result:
+                    system = (form_data.params.model_dump() if isinstance(form_data.params, ModelParams) else form_data.params).get('system') or ''
+                    if system:
+                        entry = await ModelSystemPromptHistories.create_history_entry(
+                            model_id=result.id,
+                            system_prompt=system,
+                            user_id=user_id,
+                            parent_id=None,
+                            commit_message='Initial version',
+                            db=db,
+                        )
+                        if entry:
+                            result.system_prompt_version_id = entry.id
+                            await db.commit()
                     return await self._to_model_model(result, db=db)
                 else:
                     return None
@@ -492,10 +508,32 @@ class ModelsTable:
     async def update_model_by_id(self, id: str, model: ModelForm, db: AsyncSession | None = None) -> ModelModel | None:
         try:
             async with get_async_db_context(db) as db:
-                # update only the fields that are present in the model
-                data = model.model_dump(exclude={'id', 'access_grants'})
+                result = await db.execute(select(Model).filter_by(id=id))
+                existing = result.scalars().first()
+                if not existing:
+                    return None
+
+                new_system = (model.params.model_dump() if isinstance(model.params, ModelParams) else model.params).get('system') or ''
+                old_system = (existing.params or {}).get('system') or ''
+
+                data = model.model_dump(exclude={'access_grants'})
+                data.pop('id', None)
                 data['updated_at'] = int(time.time())
-                await db.execute(update(Model).filter_by(id=id).values(**data))
+                for key, val in data.items():
+                    setattr(existing, key, val)
+
+                if new_system != old_system:
+                    latest = await ModelSystemPromptHistories.get_latest_history_entry(id, db=db)
+                    parent_id = latest.id if latest else None
+                    entry = await ModelSystemPromptHistories.create_history_entry(
+                        model_id=id,
+                        system_prompt=new_system,
+                        user_id=existing.user_id,
+                        parent_id=parent_id,
+                        db=db,
+                    )
+                    if entry:
+                        existing.system_prompt_version_id = entry.id
 
                 await db.commit()
                 if model.access_grants is not None:
@@ -605,6 +643,36 @@ class ModelsTable:
         except Exception as e:
             log.exception(f'Error syncing models for user {user_id}: {e}')
             return []
+
+
+async def update_model_system_prompt_version(
+        self,
+        model_id: str,
+        version_id: str,
+        db: AsyncSession | None = None,
+    ) -> ModelModel | None:
+        try:
+            async with get_async_db_context(db) as db:
+                result = await db.execute(select(Model).filter_by(id=model_id))
+                model = result.scalars().first()
+                if not model:
+                    return None
+
+                entry = await ModelSystemPromptHistories.get_history_entry_by_id(version_id, db=db)
+                if not entry or entry.model_id != model_id:
+                    return None
+
+                params = dict(model.params) if model.params else {}
+                params['system'] = entry.system_prompt
+                model.params = params
+                model.system_prompt_version_id = version_id
+                model.updated_at = int(time.time())
+                await db.commit()
+
+                return await self._to_model_model(model, db=db)
+        except Exception as e:
+            log.error(f'Failed to restore system prompt version: {e}')
+            return None
 
 
 Models = ModelsTable()  # singleton model registry
