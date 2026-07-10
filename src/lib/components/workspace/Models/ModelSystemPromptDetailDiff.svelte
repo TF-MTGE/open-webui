@@ -278,6 +278,7 @@
 							</div>
 
 							<button
+								type="button"
 								class="w-full text-xs py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
 								on:click={handleRestore}
 							>
@@ -331,6 +332,7 @@
 						</div>
 
 						<button
+							type="button"
 							class="w-full text-xs py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition mb-3 disabled:opacity-50"
 							disabled={!fromId || !toId || fromId === toId}
 							on:click={runDiff}

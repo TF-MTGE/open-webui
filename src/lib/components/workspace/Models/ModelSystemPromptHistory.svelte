@@ -85,6 +85,7 @@
 			{/if}
 			{#if history.length > 0}
 				<button
+					type="button"
 					class="text-xs text-blue-600 hover:text-blue-700 transition"
 					on:click={() => (showModal = true)}
 				>
