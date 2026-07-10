@@ -133,6 +133,7 @@
 						{#if entry.id !== versionId}
 							<button
 								class="text-gray-400 hover:text-blue-500 transition text-xs"
+								type="button"
 								on:click={() => handleRestore(entry)}
 								aria-label={$i18n.t('Restore this version')}
 								title={$i18n.t('Restore')}
@@ -144,6 +145,7 @@
 						{/if}
 						<button
 							class="text-gray-400 hover:text-red-500 transition text-xs"
+							type="button"
 							on:click={() => handleDelete(entry)}
 							aria-label={$i18n.t('Delete version')}
 							title={$i18n.t('Delete')}

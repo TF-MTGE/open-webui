@@ -23,6 +23,7 @@
 	let tab: 'detail' | 'diff' = 'diff';
 
 	// detail
+	let detailId = '';
 	let detailLoading = false;
 	let detail: any = null;
 
@@ -156,12 +157,14 @@
 					<h2 class="text-base font-semibold">{$i18n.t('System Prompt Versions')}</h2>
 					<div class="flex gap-1">
 						<button
+							type="button"
 							class="px-2.5 py-1 text-xs rounded-lg transition {tab === 'detail' ? 'bg-gray-200 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
 							on:click={() => (tab = 'detail')}
 						>
 							{$i18n.t('Detail')}
 						</button>
 						<button
+							type="button"
 							class="px-2.5 py-1 text-xs rounded-lg transition {tab === 'diff' ? 'bg-gray-200 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
 							on:click={() => (tab = 'diff')}
 						>
@@ -170,6 +173,7 @@
 					</div>
 				</div>
 				<button
+					type="button"
 					class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
 					on:click={() => (show = false)}
 					aria-label={$i18n.t('Close')}
@@ -183,6 +187,19 @@
 			<!-- body -->
 			<div class="flex-1 overflow-y-auto p-5 space-y-4">
 				{#if tab === 'detail'}
+					<div class="space-y-3">
+						<div class="text-xs font-medium text-gray-500 mb-1">{$i18n.t('Select a version')}</div>
+						<select
+							class="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
+							bind:value={detailId}
+							on:change={() => { if (detailId) { loadDetail(detailId); loadComments(detailId); } }}
+						>
+							<option value="">—</option>
+							{#each ordered as entry}
+								<option value={entry.id}>{entry.commit_message || entry.id.slice(0, 7)}</option>
+							{/each}
+						</select>
+					</div>
 					{#if detailLoading}
 						<div class="flex justify-center py-6"><Spinner className="size-5" /></div>
 					{:else if detail}
@@ -241,6 +258,7 @@
 														<span class="text-[10px] text-gray-400">{renderDate(comment.created_at)}</span>
 														{#if comment.user_id === $user?.id}
 															<button
+																type="button"
 																class="ml-auto text-gray-400 hover:text-red-500 transition shrink-0"
 																on:click={() => handleDeleteComment(comment)}
 																aria-label={$i18n.t('Delete comment')}
@@ -268,6 +286,7 @@
 										on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
 									/>
 									<button
+										type="button"
 										class="text-xs px-3 py-1.5 bg-black text-white dark:bg-white dark:text-black rounded-lg transition disabled:opacity-50"
 										disabled={!newComment.trim()}
 										on:click={handleAddComment}
