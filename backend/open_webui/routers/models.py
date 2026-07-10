@@ -27,6 +27,9 @@ from open_webui.models.access_grants import AccessGrants
 from open_webui.models.config import Config
 from open_webui.models.groups import Groups
 from open_webui.models.model_system_prompt_history import (
+    ModelSystemPromptCommentModel,
+    ModelSystemPromptCommentResponse,
+    ModelSystemPromptDiffResponse,
     ModelSystemPromptHistories,
     ModelSystemPromptHistoryModel,
     ModelSystemPromptHistoryResponse,
@@ -875,6 +878,23 @@ async def delete_model_by_id(
     return result
 
 
+async def _has_model_read_access(
+    model: ModelModel,
+    user,
+    db: AsyncSession,
+) -> bool:
+    write_access = (
+        (user.role == 'admin' and BYPASS_ADMIN_ACCESS_CONTROL)
+        or user.id == model.user_id
+        or await AccessGrants.has_access(
+            user_id=user.id, resource_type='model', resource_id=model.id, permission='write', db=db
+        )
+    )
+    return write_access or await AccessGrants.has_access(
+        user_id=user.id, resource_type='model', resource_id=model.id, permission='read', db=db
+    )
+
+
 ############################
 # System Prompt Versioning
 ############################
@@ -967,6 +987,115 @@ async def restore_model_system_prompt_version(
         await publish_event(request, EVENTS.MODEL_UPDATED, actor=user, subject_id=model_id)
         return updated
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.DEFAULT())
+
+
+@router.get('/model/{model_id}/system/history/{history_id}/detail', response_model=ModelSystemPromptHistoryResponse)
+async def get_model_system_prompt_history_detail(
+    model_id: str,
+    history_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    model = await Models.get_model_by_id(model_id, db=db)
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if not await _has_model_read_access(model, user, db):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
+
+    entry = await ModelSystemPromptHistories.get_detail(history_id, db=db)
+    if not entry or entry.model_id != model.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+    return entry
+
+
+class DiffForm(BaseModel):
+    from_id: str
+    to_id: str
+
+
+@router.post('/model/{model_id}/system/history/diff', response_model=ModelSystemPromptDiffResponse)
+async def diff_model_system_prompt_versions(
+    model_id: str,
+    form_data: DiffForm,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    model = await Models.get_model_by_id(model_id, db=db)
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if not await _has_model_read_access(model, user, db):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
+
+    result = await ModelSystemPromptHistories.compute_diff(form_data.from_id, form_data.to_id, model_id, db=db)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+    return result
+
+
+@router.get('/model/{model_id}/system/history/{history_id}/comments', response_model=list[ModelSystemPromptCommentResponse])
+async def get_model_system_prompt_comments(
+    model_id: str,
+    history_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    model = await Models.get_model_by_id(model_id, db=db)
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if not await _has_model_read_access(model, user, db):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
+
+    return await ModelSystemPromptHistories.get_comments_by_history_id(history_id, db=db)
+
+
+class CommentForm(BaseModel):
+    content: str
+
+
+@router.post('/model/{model_id}/system/history/{history_id}/comments', response_model=ModelSystemPromptCommentModel)
+async def create_model_system_prompt_comment(
+    model_id: str,
+    history_id: str,
+    form_data: CommentForm,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    model = await Models.get_model_by_id(model_id, db=db)
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if not await _has_model_read_access(model, user, db):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
+
+    entry = await ModelSystemPromptHistories.get_history_entry_by_id(history_id, db=db)
+    if not entry or entry.model_id != model.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    return await ModelSystemPromptHistories.create_comment(history_id, user.id, form_data.content, db=db)
+
+
+@router.delete('/model/{model_id}/system/history/{history_id}/comments/{comment_id}', response_model=bool)
+async def delete_model_system_prompt_comment(
+    model_id: str,
+    history_id: str,
+    comment_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    model = await Models.get_model_by_id(model_id, db=db)
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if not await _has_model_read_access(model, user, db):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
+
+    success = await ModelSystemPromptHistories.delete_comment(comment_id, user.id, db=db)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+    return success
 
 
 @router.delete('/model/{model_id}/system/history/{history_id}', response_model=bool)

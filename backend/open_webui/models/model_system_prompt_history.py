@@ -4,11 +4,13 @@ import uuid
 from typing import Optional
 
 from open_webui.internal.db import Base, get_async_db_context
-from open_webui.models.users import UserResponse, Users
+from open_webui.models.users import User, UserModel, UserResponse, Users
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import JSON, BigInteger, Column, Text, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+# ── Version history table ────────────────────────────────────────────
 
 class ModelSystemPromptHistory(Base):
     __tablename__ = 'model_system_prompt_history'
@@ -36,6 +38,40 @@ class ModelSystemPromptHistoryModel(BaseModel):
 
 class ModelSystemPromptHistoryResponse(ModelSystemPromptHistoryModel):
     user: Optional[UserResponse] = None
+
+
+# ── Comment table ────────────────────────────────────────────────────
+
+class ModelSystemPromptComment(Base):
+    __tablename__ = 'model_system_prompt_comment'
+
+    id = Column(Text, primary_key=True)
+    history_id = Column(Text, nullable=False, index=True)
+    user_id = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class ModelSystemPromptCommentModel(BaseModel):
+    id: str
+    history_id: str
+    user_id: str
+    content: str
+    created_at: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ModelSystemPromptCommentResponse(ModelSystemPromptCommentModel):
+    user: Optional[UserResponse] = None
+
+
+# ── Diff response ────────────────────────────────────────────────────
+
+class ModelSystemPromptDiffResponse(BaseModel):
+    from_id: str
+    to_id: str
+    content_diff: list[str]
 
 
 class ModelSystemPromptHistoryTable:
@@ -132,13 +168,35 @@ class ModelSystemPromptHistoryTable:
             )
             return result.scalar()
 
+    async def get_detail(
+        self,
+        history_id: str,
+        db: Optional[AsyncSession] = None,
+    ) -> Optional[ModelSystemPromptHistoryResponse]:
+        async with get_async_db_context(db) as db:
+            result = await db.execute(select(ModelSystemPromptHistory).filter(ModelSystemPromptHistory.id == history_id))
+            entry = result.scalars().first()
+            if not entry:
+                return None
+
+            user = None
+            u_result = await db.execute(select(User).filter(User.id == entry.user_id))
+            u_row = u_result.scalars().first()
+            if u_row:
+                user = UserResponse(**UserModel.model_validate(u_row).model_dump())
+
+            return ModelSystemPromptHistoryResponse(
+                **ModelSystemPromptHistoryModel.model_validate(entry).model_dump(),
+                user=user,
+            )
+
     async def compute_diff(
         self,
         from_id: str,
         to_id: str,
         model_id: str,
         db: Optional[AsyncSession] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[ModelSystemPromptDiffResponse]:
         async with get_async_db_context(db) as db:
             result_from = await db.execute(
                 select(ModelSystemPromptHistory).filter(ModelSystemPromptHistory.id == from_id, ModelSystemPromptHistory.model_id == model_id)
@@ -165,11 +223,11 @@ class ModelSystemPromptHistoryTable:
                 )
             )
 
-            return {
-                'from_id': from_id,
-                'to_id': to_id,
-                'content_diff': diff_lines,
-            }
+            return ModelSystemPromptDiffResponse(
+                from_id=from_id,
+                to_id=to_id,
+                content_diff=diff_lines,
+            )
 
     async def delete_history_by_model_id(
         self,
@@ -200,6 +258,71 @@ class ModelSystemPromptHistoryTable:
                 child.parent_id = entry.parent_id
 
             await db.delete(entry)
+            await db.commit()
+            return True
+
+
+# ── Comments ─────────────────────────────────────────────────────
+
+    async def create_comment(
+        self,
+        history_id: str,
+        user_id: str,
+        content: str,
+        db: Optional[AsyncSession] = None,
+    ) -> Optional[ModelSystemPromptCommentModel]:
+        async with get_async_db_context(db) as db:
+            comment = ModelSystemPromptComment(
+                id=str(uuid.uuid4()),
+                history_id=history_id,
+                user_id=user_id,
+                content=content,
+                created_at=int(time.time()),
+            )
+            db.add(comment)
+            await db.commit()
+            await db.refresh(comment)
+            return ModelSystemPromptCommentModel.model_validate(comment)
+
+    async def get_comments_by_history_id(
+        self,
+        history_id: str,
+        db: Optional[AsyncSession] = None,
+    ) -> list[ModelSystemPromptCommentResponse]:
+        async with get_async_db_context(db) as db:
+            result = await db.execute(
+                select(ModelSystemPromptComment)
+                .filter(ModelSystemPromptComment.history_id == history_id)
+                .order_by(ModelSystemPromptComment.created_at.asc())
+            )
+            comments = result.scalars().all()
+
+            user_ids = list(set(c.user_id for c in comments))
+            users = await Users.get_users_by_user_ids(user_ids, db=db) if user_ids else []
+            users_dict = {u.id: u for u in users}
+
+            return [
+                ModelSystemPromptCommentResponse(
+                    **ModelSystemPromptCommentModel.model_validate(c).model_dump(),
+                    user=(users_dict.get(c.user_id).model_dump() if users_dict.get(c.user_id) else None),
+                )
+                for c in comments
+            ]
+
+    async def delete_comment(
+        self,
+        comment_id: str,
+        user_id: str,
+        db: Optional[AsyncSession] = None,
+    ) -> bool:
+        async with get_async_db_context(db) as db:
+            result = await db.execute(
+                select(ModelSystemPromptComment).filter_by(id=comment_id, user_id=user_id)
+            )
+            comment = result.scalars().first()
+            if not comment:
+                return False
+            await db.delete(comment)
             await db.commit()
             return True
 
