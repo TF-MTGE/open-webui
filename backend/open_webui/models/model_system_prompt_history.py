@@ -21,6 +21,7 @@ class ModelSystemPromptHistory(Base):
     system_prompt = Column(Text, nullable=False, default='')
     user_id = Column(Text, nullable=False)
     commit_message = Column(Text, nullable=True)
+    snapshot = Column(JSON, nullable=True)
     created_at = Column(BigInteger, nullable=False)
 
 
@@ -31,6 +32,7 @@ class ModelSystemPromptHistoryModel(BaseModel):
     system_prompt: str = ''
     user_id: str
     commit_message: Optional[str] = None
+    snapshot: Optional[dict] = None
     created_at: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -82,6 +84,7 @@ class ModelSystemPromptHistoryTable:
         user_id: str,
         parent_id: Optional[str] = None,
         commit_message: Optional[str] = None,
+        snapshot: Optional[dict] = None,
         db: Optional[AsyncSession] = None,
     ) -> Optional[ModelSystemPromptHistoryModel]:
         async with get_async_db_context(db) as db:
@@ -92,6 +95,7 @@ class ModelSystemPromptHistoryTable:
                 system_prompt=system_prompt,
                 user_id=user_id,
                 commit_message=commit_message,
+                snapshot=snapshot,
                 created_at=int(time.time()),
             )
             db.add(history)

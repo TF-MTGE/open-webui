@@ -146,6 +146,16 @@ class ModelForm(BaseModel):
     commit_message: str | None = None
 
 
+def _build_snapshot(form_data: ModelForm) -> dict:
+    return {
+        'params': form_data.params.model_dump() if hasattr(form_data.params, 'model_dump') else form_data.params,
+        'meta': form_data.meta.model_dump() if hasattr(form_data.meta, 'model_dump') else form_data.meta,
+        'name': form_data.name,
+        'base_model_id': form_data.base_model_id,
+        'is_active': form_data.is_active,
+    }
+
+
 class ModelsTable:
     async def _get_access_grants(self, model_id: str, db: AsyncSession | None = None) -> list[AccessGrantModel]:
         return await AccessGrants.get_grants_by_resource('model', model_id, db=db)
@@ -189,6 +199,7 @@ class ModelsTable:
                             user_id=user_id,
                             parent_id=None,
                             commit_message='Initial version',
+                            snapshot=_build_snapshot(form_data),
                             db=db,
                         )
                         if entry:
@@ -523,19 +534,19 @@ class ModelsTable:
                 for key, val in data.items():
                     setattr(existing, key, val)
 
-                if new_system != old_system:
-                    latest = await ModelSystemPromptHistories.get_latest_history_entry(id, db=db)
-                    parent_id = latest.id if latest else None
-                    entry = await ModelSystemPromptHistories.create_history_entry(
-                        model_id=id,
-                        system_prompt=new_system,
-                        user_id=existing.user_id,
-                        parent_id=parent_id,
-                        commit_message=model.commit_message,
-                        db=db,
-                    )
-                    if entry:
-                        existing.system_prompt_version_id = entry.id
+                latest = await ModelSystemPromptHistories.get_latest_history_entry(id, db=db)
+                parent_id = latest.id if latest else None
+                entry = await ModelSystemPromptHistories.create_history_entry(
+                    model_id=id,
+                    system_prompt=new_system,
+                    user_id=existing.user_id,
+                    parent_id=parent_id,
+                    commit_message=model.commit_message,
+                    snapshot=_build_snapshot(model),
+                    db=db,
+                )
+                if entry:
+                    existing.system_prompt_version_id = entry.id
 
                 await db.commit()
                 if model.access_grants is not None:
@@ -679,6 +690,7 @@ class ModelsTable:
                     user_id=user_id or model.user_id,
                     parent_id=parent_id,
                     commit_message=f'Restored from version {version_id[:8]}',
+                    snapshot={'params': dict(model.params), 'meta': dict(model.meta) if model.meta else None, 'name': model.name, 'base_model_id': model.base_model_id, 'is_active': model.is_active},
                     db=db,
                 )
                 await db.commit()

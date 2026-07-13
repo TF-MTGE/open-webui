@@ -34,6 +34,7 @@
 	};
 
 	const handleRestore = async (entry: any) => {
+		if (!window.confirm($i18n.t('Restore this version? It will replace the current system prompt.'))) return;
 		restoring = true;
 		try {
 			const updated = await restoreModelSystemPromptVersion(localStorage.token, modelId, entry.id);

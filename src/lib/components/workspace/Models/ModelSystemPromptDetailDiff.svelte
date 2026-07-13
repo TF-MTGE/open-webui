@@ -128,6 +128,7 @@
 	const renderDate = (ts: number) => dayjs(ts * 1000).format('L LT');
 
 	const handleRestore = () => {
+		if (!window.confirm($i18n.t('Load this prompt into the editor? It will overwrite the current system prompt.'))) return;
 		const entry = findEntry(toId || fromId);
 		if (entry) {
 			onRestore(entry.system_prompt);
@@ -227,6 +228,11 @@
 
 							{#if detail.commit_message}
 								<div class="text-xs text-gray-500 italic">"{detail.commit_message}"</div>
+							{/if}
+
+							{#if detail.snapshot}
+								<div class="text-xs font-medium text-gray-500 mb-1">{$i18n.t('Snapshot')}</div>
+								<div class="text-xs bg-gray-50 dark:bg-gray-850 rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{JSON.stringify(detail.snapshot, null, 2)}</div>
 							{/if}
 
 							<div>
