@@ -33,6 +33,7 @@
 	let toId = '';
 	let diffLoading = false;
 	let diffResult: string[] | null = null;
+	let snapshotDiff: { field: string; from: any; to: any }[] | null = null;
 
 	// comments
 	let comments: any[] = [];
@@ -83,6 +84,9 @@
 		try {
 			const res = await getModelSystemPromptDiff(localStorage.token, modelId, fromId, toId);
 			diffResult = res?.content_diff ?? null;
+			const fromEntry = findEntry(fromId);
+			const toEntry = findEntry(toId);
+			snapshotDiff = computeSnapshotDiff(fromEntry?.snapshot, toEntry?.snapshot);
 		} catch {
 			diffResult = null;
 		}
@@ -127,6 +131,28 @@
 	const findEntry = (id: string) => history.find((h) => h.id === id);
 
 	const renderDate = (ts: number) => dayjs(ts * 1000).format('L LT');
+
+	const formatVal = (v: any): string => {
+		if (v === null || v === undefined || v === '') return '(empty)';
+		if (Array.isArray(v)) return v.length ? v.join(', ') : '(empty)';
+		if (typeof v === 'object') return JSON.stringify(v);
+		return String(v);
+	};
+
+	const computeSnapshotDiff = (from: any, to: any): { field: string; from: any; to: any }[] => {
+		if (!from || !to) return [];
+		const diffs: { field: string; from: any; to: any }[] = [];
+		const keys = new Set([...Object.keys(from), ...Object.keys(to)]);
+		for (const key of keys) {
+			const a = JSON.stringify(from[key]);
+			const b = JSON.stringify(to[key]);
+			if (a !== b) diffs.push({ field: key, from: from[key], to: to[key] });
+		}
+		const prune = (v: any) => (typeof v === 'object' && v !== null ? Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== undefined && x !== '')) : v);
+		return diffs
+			.map((d) => ({ ...d, from: prune(d.from), to: prune(d.to) }))
+			.filter((d) => JSON.stringify(d.from) !== JSON.stringify(d.to));
+	};
 
 	const handleRestore = () => {
 		if (!window.confirm($i18n.t('Load this prompt into the editor? It will overwrite the current system prompt.'))) return;
@@ -324,7 +350,7 @@
 								<select
 									class="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
 									bind:value={fromId}
-									on:change={() => { diffResult = null; }}
+									on:change={() => { diffResult = null; snapshotDiff = null; }}
 								>
 									<option value="">—</option>
 									{#each ordered as entry}
@@ -348,7 +374,7 @@
 								<select
 									class="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
 									bind:value={toId}
-									on:change={() => { diffResult = null; }}
+									on:change={() => { diffResult = null; snapshotDiff = null; }}
 								>
 									<option value="">—</option>
 									{#each ordered as entry}
@@ -382,6 +408,18 @@
 									<div class={cls}>{line}</div>
 								{/each}
 							</div>
+							{#if snapshotDiff && snapshotDiff.length > 0}
+								<div class="text-xs font-medium text-gray-500 mt-3 mb-1">{$i18n.t('Parameter Changes')}</div>
+								<div class="bg-gray-50 dark:bg-gray-850 rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">
+									{#each snapshotDiff as d}
+										<div class="text-[11px]">
+											<span class="font-medium">{d.field}</span>
+											<span class="text-red-600 dark:text-red-400"> {-}{formatVal(d.from)}</span>
+											<span class="text-green-600 dark:text-green-400"> {+}{formatVal(d.to)}</span>
+										</div>
+									{/each}
+								</div>
+							{/if}
 						{:else if fromId && toId && fromId !== toId}
 							<div class="text-xs text-gray-400 italic text-center py-4">{$i18n.t('Click Compare to see the diff')}</div>
 						{/if}
