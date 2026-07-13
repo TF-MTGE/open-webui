@@ -42,8 +42,19 @@
 
 	// pick two versions
 	export let history: any[] = [];
+	let searchQuery = '';
+	let dateFrom = '';
+	let dateTo = '';
 
-	$: ordered = [...history].reverse();
+	$: filtered = history.filter((e) => {
+		const q = searchQuery.toLowerCase();
+		if (q && !(e.commit_message || '').toLowerCase().includes(q) && !(e.user?.name || '').toLowerCase().includes(q)) return false;
+		if (dateFrom && e.created_at * 1000 < new Date(dateFrom).getTime()) return false;
+		if (dateTo && e.created_at * 1000 > new Date(dateTo + 'T23:59:59').getTime()) return false;
+		return true;
+	});
+
+	$: ordered = [...filtered].reverse();
 
 	const loadDetail = async (historyId: string) => {
 		detailLoading = true;
@@ -197,7 +208,7 @@
 							class="px-2.5 py-1 text-xs rounded-lg transition {tab === 'diff' ? 'bg-gray-200 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
 							on:click={() => (tab = 'diff')}
 						>
-							{$i18n.t('Diff')}
+							{$i18n.t('Difference')}
 						</button>
 					</div>
 				</div>
@@ -211,6 +222,17 @@
 						<path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
 					</svg>
 				</button>
+			</div>
+
+			<!-- search + date filters -->
+			<div class="flex gap-2 px-5 pt-3 pb-1">
+				<input
+					class="flex-1 text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
+					placeholder={$i18n.t('Search by commit message or user...')}
+					bind:value={searchQuery}
+				/>
+				<input type="date" class="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" bind:value={dateFrom} title={$i18n.t('From date')} />
+				<input type="date" class="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" bind:value={dateTo} title={$i18n.t('To date')} />
 			</div>
 
 			<!-- body -->
@@ -414,8 +436,8 @@
 									{#each snapshotDiff as d}
 										<div class="text-[11px]">
 											<span class="font-medium">{d.field}</span>
-											<span class="text-red-600 dark:text-red-400"> {-}{formatVal(d.from)}</span>
-											<span class="text-green-600 dark:text-green-400"> {+}{formatVal(d.to)}</span>
+<span class="text-red-600 dark:text-red-400"> -{formatVal(d.from)}</span>
+						<span class="text-green-600 dark:text-green-400"> +{formatVal(d.to)}</span>
 										</div>
 									{/each}
 								</div>
