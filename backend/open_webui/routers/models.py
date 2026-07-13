@@ -907,7 +907,7 @@ async def get_model_system_prompt_history(
     user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
-    PAGE_SIZE = 20
+    PAGE_SIZE = 200
     model = await Models.get_model_by_id(model_id, db=db)
     if not model:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
