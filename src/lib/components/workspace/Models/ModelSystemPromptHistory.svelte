@@ -20,18 +20,34 @@
 
 	let history: any[] = [];
 	let loading = false;
+	let loadingMore = false;
+	let page = 0;
+	let hasMore = true;
 	let restoring = false;
 	let showModal = false;
 
 	const loadHistory = async () => {
 		if (!modelId) return;
 		loading = true;
+		page = 0;
+		hasMore = true;
 		try {
-			history = (await getModelSystemPromptHistory(localStorage.token, modelId)) || [];
+			history = (await getModelSystemPromptHistory(localStorage.token, modelId, 0)) || [];
 		} catch {
 			history = [];
 		}
 		loading = false;
+	};
+
+	const loadMore = async () => {
+		if (!hasMore || loadingMore) return;
+		loadingMore = true;
+		try {
+			const items = (await getModelSystemPromptHistory(localStorage.token, modelId, page + 1)) || [];
+			if (items.length === 0) hasMore = false;
+			else { history = [...history, ...items]; page++; }
+		} catch { hasMore = false; }
+		loadingMore = false;
 	};
 
 	const handleRestore = async (entry: any) => {
@@ -162,6 +178,16 @@
 				</div>
 			{/each}
 		</div>
+		{#if hasMore}
+			<button
+				type="button"
+				class="w-full text-xs py-1 mt-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition disabled:opacity-50"
+				on:click={loadMore}
+				disabled={loadingMore}
+			>
+				{loadingMore ? $i18n.t('Loading...') : $i18n.t('Load More')}
+			</button>
+		{/if}
 	{:else}
 		<div class="text-xs text-gray-400 italic py-2">{$i18n.t('No version history yet')}</div>
 	{/if}
