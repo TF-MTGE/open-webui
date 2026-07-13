@@ -19,6 +19,7 @@
 	export let modelId: string;
 	export let versionId: string | null = null;
 	export let onRestore: (system: string) => void;
+	export let onRestoreComplete: (() => void) | undefined = undefined;
 
 	let tab: 'detail' | 'diff' = 'diff';
 
@@ -132,6 +133,7 @@
 		const entry = findEntry(toId || fromId);
 		if (entry) {
 			onRestore(entry.system_prompt);
+			onRestoreComplete?.();
 			show = false;
 			toast.success($i18n.t('Prompt loaded into editor — save to apply'));
 		}

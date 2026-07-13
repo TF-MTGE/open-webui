@@ -16,6 +16,7 @@
 	export let modelId: string;
 	export let versionId: string | null = null;
 	export let onRestore: (system: string) => void;
+	export let onRestoreComplete: (() => void) | undefined = undefined;
 
 	let history: any[] = [];
 	let loading = false;
@@ -41,6 +42,7 @@
 			toast.success($i18n.t('System prompt version restored — already live, no need to save'));
 			versionId = updated?.system_prompt_version_id ?? entry.id;
 			onRestore(entry.system_prompt);
+			onRestoreComplete?.();
 		} catch (e) {
 			toast.error(`${e}`);
 		}
@@ -74,6 +76,7 @@
 	{modelId}
 	{versionId}
 	{onRestore}
+	{onRestoreComplete}
 	{history}
 />
 

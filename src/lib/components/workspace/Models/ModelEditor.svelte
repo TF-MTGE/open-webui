@@ -42,6 +42,7 @@
 
 	export let model = null;
 	export let edit = false;
+	export let onReload: (() => Promise<any>) | undefined = undefined;
 
 	export let preset = true;
 
@@ -329,92 +330,95 @@
 			workspaceContainer.scrollTop = 0;
 		}
 
-		if (model) {
-			name = model.name;
-			await tick();
-
-			id = model.id;
-
-			enableDescription = model?.meta?.description !== null;
-
-			if (model.base_model_id) {
-				const base_model = $models
-					.filter(
-						(m) => (!m?.preset && !(m?.arena ?? false)) || (edit && m.id === model.base_model_id)
-					)
-					.find((m) => [model.base_model_id, `${model.base_model_id}:latest`].includes(m.id));
-
-				console.log('base_model', base_model);
-
-				if (base_model) {
-					model.base_model_id = base_model.id;
-				} else if (!edit) {
-					model.base_model_id = null;
-				}
-			}
-
-			system = model?.params?.system ?? '';
-
-			params = { ...params, ...model?.params };
-			params.stop = params?.stop
-				? (typeof params.stop === 'string' ? params.stop.split(',') : (params?.stop ?? [])).join(
-						','
-					)
-				: null;
-
-			knowledge = (model?.meta?.knowledge ?? []).map((item) => {
-				if (item?.collection_name && item?.type !== 'file') {
-					return {
-						id: item.collection_name,
-						name: item.name,
-						legacy: true
-					};
-				} else if (item?.collection_names) {
-					return {
-						name: item.name,
-						type: 'collection',
-						collection_names: item.collection_names,
-						legacy: true
-					};
-				} else {
-					return item;
-				}
-			});
-
-			toolIds = model?.meta?.toolIds ?? [];
-			skillIds = model?.meta?.skillIds ?? [];
-			filterIds = model?.meta?.filterIds ?? [];
-			defaultFilterIds = model?.meta?.defaultFilterIds ?? [];
-			actionIds = model?.meta?.actionIds ?? [];
-
-			// Per-model overrides take precedence over admin defaults
-			capabilities = { ...capabilities, ...(model?.meta?.capabilities ?? {}) };
-			defaultFeatureIds = model?.meta?.defaultFeatureIds ?? defaultFeatureIds;
-			builtinTools = model?.meta?.builtinTools ?? builtinTools;
-			terminalId = model?.meta?.terminalId ?? '';
-			tts = { voice: model?.meta?.tts?.voice ?? '' };
-
-			accessGrants = model?.access_grants ?? [];
-
-			info = {
-				...info,
-				...JSON.parse(
-					JSON.stringify(
-						model
-							? model
-							: {
-									id: model.id,
-									name: model.name
-								}
-					)
-				)
-			};
-
-			console.log(model);
-		}
+		applyModel();
 
 		loaded = true;
 	});
+
+	const applyModel = () => {
+		if (!model) return;
+		name = model.name;
+		tick();
+
+		id = model.id;
+
+		enableDescription = model?.meta?.description !== null;
+
+		if (model.base_model_id) {
+			const base_model = $models
+				.filter(
+					(m) => (!m?.preset && !(m?.arena ?? false)) || (edit && m.id === model.base_model_id)
+				)
+				.find((m) => [model.base_model_id, `${model.base_model_id}:latest`].includes(m.id));
+
+			console.log('base_model', base_model);
+
+			if (base_model) {
+				model.base_model_id = base_model.id;
+			} else if (!edit) {
+				model.base_model_id = null;
+			}
+		}
+
+		system = model?.params?.system ?? '';
+
+		params = { ...params, ...model?.params };
+		params.stop = params?.stop
+			? (typeof params.stop === 'string' ? params.stop.split(',') : (params?.stop ?? [])).join(
+					','
+				)
+			: null;
+
+		knowledge = (model?.meta?.knowledge ?? []).map((item) => {
+			if (item?.collection_name && item?.type !== 'file') {
+				return {
+					id: item.collection_name,
+					name: item.name,
+					legacy: true
+				};
+			} else if (item?.collection_names) {
+				return {
+					name: item.name,
+					type: 'collection',
+					collection_names: item.collection_names,
+					legacy: true
+				};
+			} else {
+				return item;
+			}
+		});
+
+		toolIds = model?.meta?.toolIds ?? [];
+		skillIds = model?.meta?.skillIds ?? [];
+		filterIds = model?.meta?.filterIds ?? [];
+		defaultFilterIds = model?.meta?.defaultFilterIds ?? [];
+		actionIds = model?.meta?.actionIds ?? [];
+
+		// Per-model overrides take precedence over admin defaults
+		capabilities = { ...capabilities, ...(model?.meta?.capabilities ?? {}) };
+		defaultFeatureIds = model?.meta?.defaultFeatureIds ?? defaultFeatureIds;
+		builtinTools = model?.meta?.builtinTools ?? builtinTools;
+		terminalId = model?.meta?.terminalId ?? '';
+		tts = { voice: model?.meta?.tts?.voice ?? '' };
+
+		accessGrants = model?.access_grants ?? [];
+
+		info = {
+			...info,
+			...JSON.parse(
+				JSON.stringify(
+					model
+						? model
+						: {
+								id: model.id,
+								name: model.name
+							}
+				)
+			)
+		};
+
+		console.log(model);
+	};
 </script>
 
 {#if loaded}
@@ -753,6 +757,9 @@
 										versionId={model?.system_prompt_version_id ?? null}
 										onRestore={(prompt) => {
 											system = prompt;
+										}}
+										onRestoreComplete={async () => {
+											if (onReload) { model = await onReload(); applyModel(); }
 										}}
 									/>
 								{/if}
