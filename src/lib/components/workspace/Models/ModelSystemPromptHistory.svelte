@@ -19,12 +19,21 @@
 	export let onRestoreComplete: (() => void) | undefined = undefined;
 
 	let history: any[] = [];
+	let searchQuery = '';
 	let loading = false;
 	let loadingMore = false;
 	let page = 0;
 	let hasMore = true;
 	let restoring = false;
 	let showModal = false;
+
+	$: filtered = searchQuery
+		? history.filter(
+				(e) =>
+					(e.commit_message || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+					(e.user?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+			)
+		: history;
 
 	const loadHistory = async () => {
 		if (!modelId) return;
@@ -115,13 +124,19 @@
 		</div>
 	</div>
 
+	<input
+		class="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 mb-2"
+		placeholder={$i18n.t('Search by commit message or user...')}
+		bind:value={searchQuery}
+	/>
+
 	{#if loading}
 		<div class="flex justify-center py-3">
 			<Spinner className="size-4" />
 		</div>
-	{:else if history.length > 0}
+	{:else if filtered.length > 0}
 		<div class="space-y-1 max-h-48 overflow-y-auto">
-			{#each history as entry}
+			{#each filtered as entry}
 				<div
 					class="flex items-center gap-2 px-3 py-1.5 rounded-lg {entry.id === versionId
 						? 'bg-gray-100/50 dark:bg-gray-850/50'
