@@ -20,6 +20,8 @@
 
 	let history: any[] = [];
 	let searchQuery = '';
+	let dateFrom = '';
+	let dateTo = '';
 	let loading = false;
 	let loadingMore = false;
 	let page = 0;
@@ -27,13 +29,13 @@
 	let restoring = false;
 	let showModal = false;
 
-	$: filtered = searchQuery
-		? history.filter(
-				(e) =>
-					(e.commit_message || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-					(e.user?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
-			)
-		: history;
+	$: filtered = history.filter((e) => {
+		const q = searchQuery.toLowerCase();
+		if (q && !(e.commit_message || '').toLowerCase().includes(q) && !(e.user?.name || '').toLowerCase().includes(q)) return false;
+		if (dateFrom && e.created_at * 1000 < new Date(dateFrom).getTime()) return false;
+		if (dateTo && e.created_at * 1000 > new Date(dateTo + 'T23:59:59').getTime()) return false;
+		return true;
+	});
 
 	const loadHistory = async () => {
 		if (!modelId) return;
@@ -102,7 +104,7 @@
 	{versionId}
 	{onRestore}
 	{onRestoreComplete}
-	{history}
+	history={filtered}
 />
 
 <div class="mt-2">
@@ -124,11 +126,15 @@
 		</div>
 	</div>
 
-	<input
-		class="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 mb-2"
-		placeholder={$i18n.t('Search by commit message or user...')}
-		bind:value={searchQuery}
-	/>
+	<div class="flex gap-2 mb-2">
+		<input
+			class="flex-1 text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
+			placeholder={$i18n.t('Search by commit message or user...')}
+			bind:value={searchQuery}
+		/>
+		<input type="date" class="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" bind:value={dateFrom} title={$i18n.t('From date')} />
+		<input type="date" class="text-xs bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" bind:value={dateTo} title={$i18n.t('To date')} />
+	</div>
 
 	{#if loading}
 		<div class="flex justify-center py-3">
