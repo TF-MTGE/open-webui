@@ -675,14 +675,21 @@ class ModelsTable:
                 if not entry or entry.model_id != model_id:
                     return None
 
-                latest = await ModelSystemPromptHistories.get_latest_history_entry(model_id, db=db)
-                parent_id = latest.id if latest else None
+                if entry.snapshot:
+                    model.params = entry.snapshot.get('params') or {}
+                    model.meta = entry.snapshot.get('meta') or {}
+                    model.name = entry.snapshot.get('name') or model.name
+                    model.base_model_id = entry.snapshot.get('base_model_id') or model.base_model_id
+                else:
+                    params = dict(model.params) if model.params else {}
+                    params['system'] = entry.system_prompt
+                    model.params = params
 
-                params = dict(model.params) if model.params else {}
-                params['system'] = entry.system_prompt
-                model.params = params
                 model.system_prompt_version_id = version_id
                 model.updated_at = int(time.time())
+
+                latest = await ModelSystemPromptHistories.get_latest_history_entry(model_id, db=db)
+                parent_id = latest.id if latest else None
 
                 await ModelSystemPromptHistories.create_history_entry(
                     model_id=model_id,
@@ -690,7 +697,7 @@ class ModelsTable:
                     user_id=user_id or model.user_id,
                     parent_id=parent_id,
                     commit_message=f'Restored from version {version_id[:8]}',
-                    snapshot={'params': dict(model.params), 'meta': dict(model.meta) if model.meta else None, 'name': model.name, 'base_model_id': model.base_model_id, 'is_active': model.is_active},
+                    snapshot={'params': dict(model.params) if model.params else {}, 'meta': dict(model.meta) if model.meta else {}, 'name': model.name, 'base_model_id': model.base_model_id, 'is_active': model.is_active},
                     db=db,
                 )
                 await db.commit()
