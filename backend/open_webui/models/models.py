@@ -534,19 +534,22 @@ class ModelsTable:
                 for key, val in data.items():
                     setattr(existing, key, val)
 
+                new_snapshot = _build_snapshot(model)
                 latest = await ModelSystemPromptHistories.get_latest_history_entry(id, db=db)
                 parent_id = latest.id if latest else None
-                entry = await ModelSystemPromptHistories.create_history_entry(
-                    model_id=id,
-                    system_prompt=new_system,
-                    user_id=existing.user_id,
-                    parent_id=parent_id,
-                    commit_message=model.commit_message,
-                    snapshot=_build_snapshot(model),
-                    db=db,
-                )
-                if entry:
-                    existing.system_prompt_version_id = entry.id
+
+                if not latest or latest.snapshot != new_snapshot:
+                    entry = await ModelSystemPromptHistories.create_history_entry(
+                        model_id=id,
+                        system_prompt=new_system,
+                        user_id=existing.user_id,
+                        parent_id=parent_id,
+                        commit_message=model.commit_message,
+                        snapshot=new_snapshot,
+                        db=db,
+                    )
+                    if entry:
+                        existing.system_prompt_version_id = entry.id
 
                 await db.commit()
                 if model.access_grants is not None:
